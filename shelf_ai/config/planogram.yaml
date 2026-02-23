@@ -1,0 +1,67 @@
+# Planogram Configuration
+# Defines which products are allowed on each shelf and expected quantities
+
+shelves:
+  shelf_a:
+    name: "Shelf A - Snacks & Noodles"
+    zone_y_range: [0.0, 0.25]       # top 25% of image
+    allowed_products:
+      - maggi
+      - parleg
+      - lays
+      - goodday
+      - bourbon
+    expected_counts:
+      maggi: 8
+      parleg: 10
+      lays: 6
+      goodday: 8
+      bourbon: 8
+
+  shelf_b:
+    name: "Shelf B - Personal Care"
+    zone_y_range: [0.25, 0.50]      # 25–50% of image
+    allowed_products:
+      - colgate
+      - dove
+      - clinicplus
+      - lifebuoy
+      - pepsodent
+    expected_counts:
+      colgate: 6
+      dove: 5
+      clinicplus: 5
+      lifebuoy: 6
+      pepsodent: 4
+
+  shelf_c:
+    name: "Shelf C - Drinks"
+    zone_y_range: [0.50, 0.75]      # 50–75% of image
+    allowed_products:
+      - coke
+      - pepsi
+      - sprite
+      - maaza
+      - thumsup
+    expected_counts:
+      coke: 8
+      pepsi: 8
+      sprite: 6
+      maaza: 6
+      thumsup: 6
+
+  shelf_d:
+    name: "Shelf D - Groceries"
+    zone_y_range: [0.75, 1.0]       # bottom 25% of image
+    allowed_products:
+      - atta
+      - sugar
+      - salt
+      - dalda
+      - tata_tea
+    expected_counts:
+      atta: 4
+      sugar: 4
+      salt: 6
+      dalda: 4
+      tata_tea: 5

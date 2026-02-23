@@ -1,0 +1,34 @@
+# Stock Threshold Configuration
+
+stock:
+  # Fraction of expected count below which "low stock" is triggered
+  low_stock_ratio: 0.4        # <= 40% of expected → Low Stock
+  # Count at or below which "out of stock" is triggered
+  out_of_stock_count: 0       # == 0 → Out of Stock
+
+alerts:
+  telegram:
+    enabled: false
+    bot_token: ""             # set via environment variable TELEGRAM_BOT_TOKEN
+    chat_id: ""               # set via environment variable TELEGRAM_CHAT_ID
+
+  email:
+    enabled: false
+    smtp_host: "smtp.gmail.com"
+    smtp_port: 587
+    sender: ""                # set via environment variable EMAIL_SENDER
+    password: ""              # set via environment variable EMAIL_PASSWORD
+    recipient: ""             # set via environment variable EMAIL_RECIPIENT
+
+  # Minimum seconds between repeated alerts for the same product/shelf
+  cooldown_seconds: 300
+
+model:
+  weights_path: "runs/detect/shelf_ai/weights/best.pt"
+  confidence_threshold: 0.45
+  iou_threshold: 0.45
+  device: "cpu"               # "cpu" or "cuda" or "0" (GPU index)
+
+dashboard:
+  refresh_interval_seconds: 5
+  title: "Shelf AI – Retail Inventory Monitor"
