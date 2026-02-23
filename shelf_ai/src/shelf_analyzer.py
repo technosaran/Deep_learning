@@ -33,6 +33,13 @@ class ProductStock:
     expected_count: int
     status: StockStatus
 
+    @property
+    def fill_rate(self) -> float:
+        """Fraction of expected stock currently detected (0.0–1.0+)."""
+        if self.expected_count == 0:
+            return 1.0
+        return self.detected_count / self.expected_count
+
 
 @dataclass
 class ShelfReport:
@@ -42,6 +49,26 @@ class ShelfReport:
     shelf_stocks: Dict[str, List[ProductStock]] = field(default_factory=dict)
     # list of (product, detected_shelf, expected_shelf) tuples
     misplaced: List[Tuple[str, str, str]] = field(default_factory=list)
+
+    @property
+    def all_items(self) -> List[ProductStock]:
+        items = []
+        for stocks in self.shelf_stocks.values():
+            items.extend(stocks)
+        return items
+
+    @property
+    def total_detections(self) -> int:
+        """Total number of products detected across all shelves."""
+        return sum(s.detected_count for s in self.all_items)
+
+    @property
+    def overall_fill_rate(self) -> float:
+        """Ratio of total detected to total expected across all shelves (0.0–1.0)."""
+        total_expected = sum(s.expected_count for s in self.all_items)
+        if total_expected == 0:
+            return 1.0
+        return min(self.total_detections / total_expected, 1.0)
 
     @property
     def low_stock_items(self) -> List[ProductStock]:
@@ -55,6 +82,13 @@ class ShelfReport:
         items = []
         for stocks in self.shelf_stocks.values():
             items.extend(s for s in stocks if s.status == StockStatus.OUT_OF_STOCK)
+        return items
+
+    @property
+    def ok_items(self) -> List[ProductStock]:
+        items = []
+        for stocks in self.shelf_stocks.values():
+            items.extend(s for s in stocks if s.status == StockStatus.OK)
         return items
 
     @property

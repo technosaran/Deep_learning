@@ -27,6 +27,8 @@ sys.path.insert(0, str(REPO_ROOT))
 from src.shelf_analyzer import ShelfAnalyzer, StockStatus  # noqa: E402
 from src.planogram import PlanogramChecker  # noqa: E402
 from src.alerts import AlertManager  # noqa: E402
+from src.metrics import MetricsCalculator  # noqa: E402
+from src.history import StockHistory  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -117,8 +119,20 @@ def _build_demo_result():
 # Render functions
 # ---------------------------------------------------------------------------
 
-def render_shelf_report(report, checker):
+def render_shelf_report(report, checker, history: StockHistory | None = None):
     compliance = checker.check(report.misplaced)
+
+    # ── KPI metrics ───────────────────────────────────────────────────
+    calc = MetricsCalculator()
+    metrics = calc.compute(report)
+
+    kpi1, kpi2, kpi3, kpi4 = st.columns(4)
+    kpi1.metric("🩺 Health Score", f"{metrics.health_score:.1f} / 100")
+    kpi2.metric("📦 Fill Rate", f"{metrics.overall_fill_rate:.1%}")
+    kpi3.metric("🔴 Out of Stock", metrics.oos_count)
+    kpi4.metric("🟡 Low Stock", metrics.low_stock_count)
+
+    st.divider()
 
     # ── Summary bar ──────────────────────────────────────────────────
     col1, col2, col3 = st.columns(3)
@@ -141,7 +155,10 @@ def render_shelf_report(report, checker):
     # ── Per-shelf tables ──────────────────────────────────────────────
     for shelf_id, stocks in report.shelf_stocks.items():
         shelf_name = stocks[0].shelf_name if stocks else shelf_id
-        with st.expander(f"📦 {shelf_name}", expanded=True):
+        shelf_fill = metrics.shelf_fill_rates.get(shelf_id, 1.0)
+        with st.expander(
+            f"📦 {shelf_name}  —  fill rate: {shelf_fill:.1%}", expanded=True
+        ):
             rows = []
             for s in stocks:
                 rows.append(
@@ -149,6 +166,7 @@ def render_shelf_report(report, checker):
                         "Product": s.product.title(),
                         "Detected": s.detected_count,
                         "Expected": s.expected_count,
+                        "Fill Rate": f"{s.fill_rate:.1%}",
                         "Status": _badge(s.status),
                     }
                 )
@@ -173,6 +191,29 @@ def render_shelf_report(report, checker):
                 f"'{det_shelf}' (expected '{exp_shelf}')"
             )
 
+    # ── History trend charts ──────────────────────────────────────────
+    if history is not None:
+        history.record(metrics)
+        if len(history) > 1:
+            st.divider()
+            st.subheader("📈 Trend")
+            import pandas as pd  # noqa: PLC0415
+
+            entries = history.entries
+            df = pd.DataFrame(
+                {
+                    "Health Score": [e.health_score for e in entries],
+                    "Fill Rate %": [round(e.overall_fill_rate * 100, 1) for e in entries],
+                    "Out of Stock": [e.oos_count for e in entries],
+                    "Low Stock": [e.low_stock_count for e in entries],
+                }
+            )
+            col_a, col_b = st.columns(2)
+            with col_a:
+                st.line_chart(df[["Health Score", "Fill Rate %"]])
+            with col_b:
+                st.line_chart(df[["Out of Stock", "Low Stock"]])
+
 
 # ---------------------------------------------------------------------------
 # Main app
@@ -193,6 +234,11 @@ def main():
     checker = load_checker()
     alert_mgr = load_alert_manager()
 
+    # Session-scoped history (persists across reruns within one session)
+    if "history" not in st.session_state:
+        st.session_state["history"] = StockHistory(max_entries=200)
+    history: StockHistory = st.session_state["history"]
+
     # ── Sidebar ───────────────────────────────────────────────────────
     with st.sidebar:
         st.header("⚙️ Settings")
@@ -208,6 +254,11 @@ def main():
         refresh_secs = st.number_input(
             "Refresh interval (s)", min_value=1, max_value=60, value=5
         )
+        st.divider()
+        if st.button("🗑️ Clear history"):
+            history.clear()
+            st.session_state["history"] = StockHistory(max_entries=200)
+            st.rerun()
 
     # ── Main area ─────────────────────────────────────────────────────
 
@@ -218,7 +269,7 @@ def main():
         )
         demo_result = _build_demo_result()
         report = analyzer.analyse(demo_result)
-        render_shelf_report(report, checker)
+        render_shelf_report(report, checker, history)
 
         # Send demo alerts
         for item in report.out_of_stock_items:
@@ -267,7 +318,7 @@ def main():
                 st.metric("Total detections", len(det_result.detections))
 
             report = analyzer.analyse(det_result)
-            render_shelf_report(report, checker)
+            render_shelf_report(report, checker, history)
 
     elif mode == "📷 Webcam":
         import cv2  # noqa: PLC0415
@@ -295,7 +346,7 @@ def main():
 
                     report = analyzer.analyse(det_result)
                     with report_placeholder.container():
-                        render_shelf_report(report, checker)
+                        render_shelf_report(report, checker, history)
 
             finally:
                 cap.release()

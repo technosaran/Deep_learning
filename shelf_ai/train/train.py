@@ -83,6 +83,28 @@ def parse_args(argv=None):
         default=DEFAULT_RUN_NAME,
         help="Run subdirectory name (default: %(default)s)",
     )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=4,
+        help="Number of data-loader worker processes (default: 4)",
+    )
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="Resume training from the last checkpoint in the run directory",
+    )
+    parser.add_argument(
+        "--cache",
+        action="store_true",
+        help="Cache dataset images in RAM for faster training",
+    )
+    parser.add_argument(
+        "--freeze",
+        type=int,
+        default=0,
+        help="Number of backbone layers to freeze (0 = none, default: 0)",
+    )
     return parser.parse_args(argv)
 
 
@@ -130,6 +152,10 @@ def train(args) -> None:
         patience=15,           # early stopping patience
         save_period=10,        # save checkpoint every 10 epochs
         plots=True,
+        workers=args.workers,
+        resume=args.resume,
+        cache=args.cache,
+        freeze=args.freeze if args.freeze > 0 else None,
     )
 
     best_weights = Path(args.project) / args.name / "weights" / "best.pt"
