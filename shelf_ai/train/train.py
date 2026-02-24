@@ -35,6 +35,15 @@ DEFAULT_BATCH = 16
 DEFAULT_PROJECT = str(REPO_ROOT / "runs" / "detect")
 DEFAULT_RUN_NAME = "shelf_ai"
 
+# Model size map: shorthand letter → YOLOv8 weights filename
+_MODEL_SIZES = {
+    "n": "yolov8n.pt",
+    "s": "yolov8s.pt",
+    "m": "yolov8m.pt",
+    "l": "yolov8l.pt",
+    "x": "yolov8x.pt",
+}
+
 
 def parse_args(argv=None):
     parser = argparse.ArgumentParser(
@@ -48,7 +57,16 @@ def parse_args(argv=None):
     parser.add_argument(
         "--weights",
         default=DEFAULT_WEIGHTS,
-        help="Base YOLOv8 weights (default: %(default)s)",
+        help="Base YOLOv8 weights or model size letter (n/s/m/l/x) (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--model",
+        choices=list(_MODEL_SIZES.keys()),
+        default=None,
+        help=(
+            "YOLOv8 model size shorthand: n (nano), s (small), m (medium), "
+            "l (large), x (extra-large).  Overrides --weights when specified."
+        ),
     )
     parser.add_argument(
         "--epochs",
@@ -105,6 +123,39 @@ def parse_args(argv=None):
         default=0,
         help="Number of backbone layers to freeze (0 = none, default: 0)",
     )
+    parser.add_argument(
+        "--optimizer",
+        default="auto",
+        choices=["auto", "SGD", "Adam", "AdamW", "NAdam", "RAdam", "RMSProp"],
+        help="Optimizer to use during training (default: auto)",
+    )
+    parser.add_argument(
+        "--lr0",
+        type=float,
+        default=0.01,
+        help="Initial learning rate (default: 0.01)",
+    )
+    parser.add_argument(
+        "--lrf",
+        type=float,
+        default=0.01,
+        help="Final learning rate as a fraction of lr0 (default: 0.01)",
+    )
+    parser.add_argument(
+        "--close-mosaic",
+        type=int,
+        default=10,
+        dest="close_mosaic",
+        help=(
+            "Disable mosaic augmentation for the last N epochs to stabilise "
+            "training (default: 10)"
+        ),
+    )
+    parser.add_argument(
+        "--augment",
+        action="store_true",
+        help="Enable test-time augmentation (TTA) during final validation",
+    )
     return parser.parse_args(argv)
 
 
@@ -136,8 +187,11 @@ def train(args) -> None:
         )
         sys.exit(1)
 
-    print(f"Loading base model: {args.weights}")
-    model = YOLO(args.weights)
+    # Resolve weights: --model shorthand takes priority over --weights
+    weights = _MODEL_SIZES[args.model] if args.model else args.weights
+
+    print(f"Loading base model: {weights}")
+    model = YOLO(weights)
 
     print(f"Starting training – {args.epochs} epochs, img_size={args.imgsz}")
     model.train(
@@ -156,10 +210,18 @@ def train(args) -> None:
         resume=args.resume,
         cache=args.cache,
         freeze=args.freeze if args.freeze > 0 else None,
+        optimizer=args.optimizer,
+        lr0=args.lr0,
+        lrf=args.lrf,
+        close_mosaic=args.close_mosaic,
     )
 
     best_weights = Path(args.project) / args.name / "weights" / "best.pt"
     print(f"\n✅ Training complete.\nBest weights saved to: {best_weights}")
+
+    if args.augment:
+        print("\n🔍 Running validation with test-time augmentation (TTA)…")
+        model.val(data=str(data_path), augment=True)
 
 
 if __name__ == "__main__":

@@ -158,23 +158,41 @@ def run_webcam(weights: str, analyzer, checker, alert_mgr):
     print("Webcam started – press 'q' to quit, 's' to analyse current frame.")
     last_analysis = 0.0
     ANALYSIS_INTERVAL = 3.0  # seconds between auto-analyses
+    fps_start = time.time()
+    frame_count = 0
 
     while True:
         ret, frame = cap.read()
         if not ret:
             break
 
+        frame_count += 1
         now = time.time()
+        elapsed = now - fps_start
+        fps = frame_count / elapsed if elapsed > 0 else 0.0
+
         if now - last_analysis >= ANALYSIS_INTERVAL:
             result = detector.predict(frame, draw=True)
             report = analyzer.analyse(result)
             compliance = checker.check(report.misplaced)
             print_report(report, compliance)
+            print(f"  📷 Real-time FPS: {fps:.1f}")
             _fire_alerts(report, alert_mgr)
             last_analysis = now
             if result.annotated_frame is not None:
                 frame = result.annotated_frame
 
+        # Overlay FPS on the displayed frame
+        cv2.putText(
+            frame,
+            f"FPS: {fps:.1f}",
+            (10, 30),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            1.0,
+            (0, 255, 0),
+            2,
+            cv2.LINE_AA,
+        )
         cv2.imshow("Shelf AI – Live", frame)
         key = cv2.waitKey(1) & 0xFF
         if key == ord("q"):
