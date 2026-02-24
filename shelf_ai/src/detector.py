@@ -67,6 +67,12 @@ class ShelfDetector:
         IOU threshold for non-maximum suppression.
     device : str
         Inference device – ``"cpu"``, ``"cuda"``, or GPU index string.
+    augment : bool
+        Enable test-time augmentation (TTA) for higher detection accuracy
+        at the cost of ~3× slower inference.
+    half : bool
+        Use FP16 half-precision inference (GPU only).  Faster on CUDA
+        devices with negligible accuracy loss.
     """
 
     def __init__(
@@ -75,11 +81,15 @@ class ShelfDetector:
         confidence: float = 0.45,
         iou: float = 0.45,
         device: str = "cpu",
+        augment: bool = False,
+        half: bool = False,
     ) -> None:
         self.weights_path = Path(weights_path)
         self.confidence = confidence
         self.iou = iou
         self.device = device
+        self.augment = augment
+        self.half = half
         self._model = None
 
     # ------------------------------------------------------------------
@@ -134,6 +144,8 @@ class ShelfDetector:
             conf=self.confidence,
             iou=self.iou,
             device=self.device,
+            augment=self.augment,
+            half=self.half,
             verbose=False,
         )
 

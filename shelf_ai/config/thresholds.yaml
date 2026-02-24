@@ -28,6 +28,8 @@ model:
   confidence_threshold: 0.45
   iou_threshold: 0.45
   device: "cpu"               # "cpu" or "cuda" or "0" (GPU index)
+  augment: false              # test-time augmentation – higher accuracy, slower
+  half: false                 # FP16 inference – faster on CUDA, no effect on CPU
 
 dashboard:
   refresh_interval_seconds: 5

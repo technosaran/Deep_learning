@@ -69,6 +69,8 @@ def load_detector(weights_path: str):
         confidence=m.get("confidence_threshold", 0.45),
         iou=m.get("iou_threshold", 0.45),
         device=m.get("device", "cpu"),
+        augment=m.get("augment", False),
+        half=m.get("half", False),
     )
 
 # ---------------------------------------------------------------------------
@@ -326,23 +328,39 @@ def main():
         frame_placeholder = st.empty()
         report_placeholder = st.empty()
 
-        run = st.button("▶ Capture frame")
-        if run or auto_refresh:
+        col_run, col_stop = st.columns(2)
+        run = col_run.button("▶ Start streaming")
+        stop = col_stop.button("⏹ Stop streaming")
+
+        if stop:
+            st.session_state["webcam_running"] = False
+
+        if run:
+            st.session_state["webcam_running"] = True
+
+        if st.session_state.get("webcam_running") or auto_refresh:
             cap = cv2.VideoCapture(0)
             try:
                 ret, frame = cap.read()
+                t_start = time.time()
                 if not ret:
                     st.error("Could not read from webcam.")
+                    st.session_state["webcam_running"] = False
                 else:
                     with st.spinner("Running detection…"):
                         detector = load_detector(weights_path)
                         det_result = detector.predict(frame, draw=True)
+
+                    inference_ms = (time.time() - t_start) * 1000
 
                     if det_result.annotated_frame is not None:
                         rgb = cv2.cvtColor(
                             det_result.annotated_frame, cv2.COLOR_BGR2RGB
                         )
                         frame_placeholder.image(rgb, use_container_width=True)
+
+                    st.metric("⚡ Inference time", f"{inference_ms:.0f} ms")
+                    st.metric("📦 Detections", len(det_result.detections))
 
                     report = analyzer.analyse(det_result)
                     with report_placeholder.container():
@@ -351,7 +369,7 @@ def main():
             finally:
                 cap.release()
 
-            if auto_refresh:
+            if auto_refresh and st.session_state.get("webcam_running", True):
                 time.sleep(refresh_secs)
                 st.rerun()
 
