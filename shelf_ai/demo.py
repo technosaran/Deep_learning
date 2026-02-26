@@ -32,6 +32,9 @@ from src.shelf_analyzer import ShelfAnalyzer, StockStatus  # noqa: E402
 from src.planogram import PlanogramChecker  # noqa: E402
 from src.alerts import AlertManager  # noqa: E402
 from src.restock import RestockPlanner  # noqa: E402
+from src.smoother import DetectionSmoother  # noqa: E402
+from src.metrics import MetricsCalculator  # noqa: E402
+from src.history import StockHistory  # noqa: E402
 
 CONFIG_DIR = REPO_ROOT / "config"
 PLANOGRAM_PATH = str(CONFIG_DIR / "planogram.yaml")
@@ -118,6 +121,10 @@ def print_report(report, compliance):
     print(f"{'─'*60}\n")
 
 
+def print_metrics(metrics):
+    print(metrics.summary())
+
+
 def _build_demo_result():
     """Synthetic result that covers all status types."""
     from src.detector import Detection, DetectionResult
@@ -148,7 +155,9 @@ def run_on_image(source: str, weights: str, analyzer, checker, alert_mgr, planne
     print(f"Detected {len(result.detections)} objects in '{source}'")
     report = analyzer.analyse(result)
     compliance = checker.check(report.misplaced)
+    metrics = MetricsCalculator().compute(report)
     print_report(report, compliance)
+    print_metrics(metrics)
     print_restock_plan(planner.plan(report))
 
     try:
@@ -165,7 +174,7 @@ def run_on_image(source: str, weights: str, analyzer, checker, alert_mgr, planne
     _fire_alerts(report, alert_mgr)
 
 
-def run_webcam(weights: str, analyzer, checker, alert_mgr, planner):
+def run_webcam(weights: str, analyzer, checker, alert_mgr, planner, smoother_window: int = 5):
     try:
         import cv2
     except ImportError:
@@ -175,6 +184,9 @@ def run_webcam(weights: str, analyzer, checker, alert_mgr, planner):
     from src.detector import ShelfDetector
 
     detector = ShelfDetector(weights)
+    smoother = DetectionSmoother(window=smoother_window)
+    calc = MetricsCalculator()
+    history = StockHistory(max_entries=200)
     cap = cv2.VideoCapture(0)
     if not cap.isOpened():
         print("ERROR: Cannot open webcam.", file=sys.stderr)
@@ -198,11 +210,35 @@ def run_webcam(weights: str, analyzer, checker, alert_mgr, planner):
 
         if now - last_analysis >= ANALYSIS_INTERVAL:
             result = detector.predict(frame, draw=True)
+
+            # Smooth per-product detection counts across frames
+            raw_counts: dict[str, int] = {}
+            for det in result.detections:
+                raw_counts[det.label] = raw_counts.get(det.label, 0) + 1
+            smoothed_counts = smoother.update(raw_counts)
+
             report = analyzer.analyse(result)
             compliance = checker.check(report.misplaced)
+            metrics = calc.compute(report)
+            history.record(metrics)
+
             print_report(report, compliance)
+            print_metrics(metrics)
             print_restock_plan(planner.plan(report))
             print(f"  📷 Real-time FPS: {fps:.1f}")
+            if smoothed_counts:
+                print(
+                    f"  🔀 Smoothed counts (window={smoother.window}): "
+                    + ", ".join(
+                        f"{k}={v}" for k, v in sorted(smoothed_counts.items())
+                    )
+                )
+            trend = history.health_score_trend()
+            if len(trend) > 1:
+                print(
+                    f"  📈 Health trend (last {min(len(trend), 5)}): "
+                    + ", ".join(f"{s:.1f}" for s in trend[-5:])
+                )
             _fire_alerts(report, alert_mgr)
             last_analysis = now
             if result.annotated_frame is not None:
@@ -257,6 +293,14 @@ def parse_args(argv=None):
         "--demo", action="store_true", help="Synthetic demo (no weights needed)"
     )
     p.add_argument("--weights", default=DEFAULT_WEIGHTS, help="Path to best.pt weights")
+    p.add_argument(
+        "--smoother-window",
+        type=int,
+        default=5,
+        dest="smoother_window",
+        metavar="N",
+        help="Temporal smoothing window for webcam mode (default: 5 frames)",
+    )
     return p.parse_args(argv)
 
 
@@ -276,13 +320,15 @@ def main(argv=None):
         result = _build_demo_result()
         report = analyzer.analyse(result)
         compliance = checker.check(report.misplaced)
+        metrics = MetricsCalculator().compute(report)
         print_report(report, compliance)
+        print_metrics(metrics)
         print_restock_plan(planner.plan(report))
         _fire_alerts(report, alert_mgr)
     elif args.source:
         run_on_image(args.source, args.weights, analyzer, checker, alert_mgr, planner)
     else:
-        run_webcam(args.weights, analyzer, checker, alert_mgr, planner)
+        run_webcam(args.weights, analyzer, checker, alert_mgr, planner, args.smoother_window)
 
 
 if __name__ == "__main__":
