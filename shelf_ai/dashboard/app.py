@@ -14,6 +14,8 @@ The dashboard supports three modes:
 
 from __future__ import annotations
 
+import csv
+import io
 import sys
 import time
 from pathlib import Path
@@ -29,6 +31,7 @@ from src.planogram import PlanogramChecker  # noqa: E402
 from src.alerts import AlertManager  # noqa: E402
 from src.metrics import MetricsCalculator  # noqa: E402
 from src.history import StockHistory  # noqa: E402
+from src.restock import RestockPlanner  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -155,6 +158,7 @@ def render_shelf_report(report, checker, history: StockHistory | None = None):
     st.divider()
 
     # ── Per-shelf tables ──────────────────────────────────────────────
+    all_rows = []
     for shelf_id, stocks in report.shelf_stocks.items():
         shelf_name = stocks[0].shelf_name if stocks else shelf_id
         shelf_fill = metrics.shelf_fill_rates.get(shelf_id, 1.0)
@@ -163,16 +167,30 @@ def render_shelf_report(report, checker, history: StockHistory | None = None):
         ):
             rows = []
             for s in stocks:
-                rows.append(
-                    {
-                        "Product": s.product.title(),
-                        "Detected": s.detected_count,
-                        "Expected": s.expected_count,
-                        "Fill Rate": f"{s.fill_rate:.1%}",
-                        "Status": _badge(s.status),
-                    }
-                )
+                row = {
+                    "Product": s.product.title(),
+                    "Shelf": shelf_name,
+                    "Detected": s.detected_count,
+                    "Expected": s.expected_count,
+                    "Fill Rate": f"{s.fill_rate:.1%}",
+                    "Status": _badge(s.status),
+                }
+                rows.append(row)
+                all_rows.append(row)
             st.table(rows)
+
+    # ── CSV export ────────────────────────────────────────────────────
+    if all_rows:
+        buf = io.StringIO()
+        writer = csv.DictWriter(buf, fieldnames=list(all_rows[0].keys()))
+        writer.writeheader()
+        writer.writerows(all_rows)
+        st.download_button(
+            label="⬇️ Export shelf report as CSV",
+            data=buf.getvalue(),
+            file_name="shelf_report.csv",
+            mime="text/csv",
+        )
 
     # ── Action required ───────────────────────────────────────────────
     if report.action_required:
@@ -192,6 +210,31 @@ def render_shelf_report(report, checker, history: StockHistory | None = None):
                 f"MISPLACED – {product.title()} found on shelf "
                 f"'{det_shelf}' (expected '{exp_shelf}')"
             )
+
+    # ── Restock priority queue ────────────────────────────────────────
+    planner = RestockPlanner()
+    tasks = planner.plan(report)
+    st.divider()
+    st.subheader("🛒 Restock Priority Queue")
+    if not tasks:
+        st.success("All shelves are well-stocked – no restock needed.")
+    else:
+        import pandas as pd  # noqa: PLC0415
+
+        task_rows = [
+            {
+                "Rank": t.rank,
+                "Urgency": f"{t.urgency_score:.2f}",
+                "Product": t.product.title(),
+                "Shelf": t.shelf_name,
+                "Have": t.detected_count,
+                "Need": t.expected_count,
+                "Restock": t.units_needed,
+                "Status": t.status.value,
+            }
+            for t in tasks
+        ]
+        st.dataframe(pd.DataFrame(task_rows), use_container_width=True, hide_index=True)
 
     # ── History trend charts ──────────────────────────────────────────
     if history is not None:

@@ -11,6 +11,7 @@ The system watches a retail shelf (image / live webcam) and answers:
 | Which shelf are they on? | Shelf-zone assignment from vertical position |
 | Is something missing? | **Out of Stock** / **Low Stock** alerts |
 | Is something in the wrong place? | **Planogram violation** with source → target shelf |
+| What should staff restock first? | **Priority-ordered restock queue** with urgency scores |
 
 ---
 
@@ -24,17 +25,25 @@ shelf_ai/
 ├── data/
 │   └── README.py           # Dataset preparation instructions
 ├── src/
-│   ├── detector.py         # YOLOv8 inference wrapper
+│   ├── detector.py         # YOLOv8 inference wrapper (TTA + FP16 support)
 │   ├── shelf_analyzer.py   # Shelf zone mapping + stock status logic
 │   ├── planogram.py        # Planogram compliance checker
-│   └── alerts.py           # Telegram / Email / console alert system
+│   ├── alerts.py           # Telegram / Email / console alert system
+│   ├── metrics.py          # KPI calculator (fill rate, health score, …)
+│   ├── history.py          # Rolling KPI history with JSON persistence
+│   ├── smoother.py         # Temporal detection smoother (real-time noise reduction)
+│   └── restock.py          # Restock priority planner with urgency scoring
 ├── train/
 │   └── train.py            # YOLOv8 fine-tuning script
 ├── dashboard/
 │   └── app.py              # Streamlit dashboard
 ├── tests/
 │   ├── test_shelf_analyzer.py
-│   └── test_alerts.py
+│   ├── test_alerts.py
+│   ├── test_metrics.py
+│   ├── test_history.py
+│   ├── test_improvements.py
+│   └── test_advanced_features.py
 ├── demo.py                 # CLI demo script
 └── requirements.txt
 ```
@@ -184,6 +193,53 @@ export EMAIL_RECIPIENT="manager@store.com"
 
 ---
 
+## Advanced Features
+
+### Temporal Detection Smoother (`src/smoother.py`)
+
+In real-time video mode, single frames can produce noisy counts (missed
+detections, false positives).  `DetectionSmoother` maintains a rolling window
+of the last *N* frames and returns time-averaged counts, reducing variance
+without noticeable lag.
+
+```python
+from src.smoother import DetectionSmoother
+
+smoother = DetectionSmoother(window=5)
+# call once per frame with the raw per-product counts
+smoothed_counts = smoother.update({"maggi": 3, "lays": 1})
+```
+
+### Restock Priority Planner (`src/restock.py`)
+
+Converts a `ShelfReport` into a ranked task list so staff know exactly which
+products to restock first.
+
+| Status | Urgency score |
+|---|---|
+| Out of Stock | 1.00 (critical) |
+| Low Stock | (1 – fill_rate) × 0.70 |
+
+```python
+from src.restock import RestockPlanner
+
+planner = RestockPlanner()
+tasks = planner.plan(report)
+for task in tasks:
+    print(task)
+# Output example:
+#  #1  [1.00]  lays                  Shelf A - Snacks & Noodles   need  6 unit(s)  (Out of Stock)
+#  #2  [0.53]  maggi                 Shelf A - Snacks & Noodles   need  6 unit(s)  (Low Stock)
+```
+
+### Dashboard Enhancements
+
+- **🛒 Restock Priority Queue** – interactive sortable table in the dashboard
+- **⬇️ Export shelf report as CSV** – one-click download for store management
+- **📈 Trend charts** – health score and fill-rate trends across sessions
+
+---
+
 ## Running Tests
 
 ```bash
@@ -203,7 +259,13 @@ Image / Video Frame
         ▼
 ┌───────────────────┐
 │  ShelfDetector    │  YOLOv8 → List[Detection]
-│  (detector.py)    │  (label, confidence, bbox)
+│  (detector.py)    │  (TTA + FP16 supported)
+└───────┬───────────┘
+        │
+        ▼
+┌───────────────────┐
+│ DetectionSmoother │  Rolling-window mean (real-time noise reduction)
+│  (smoother.py)    │  → smoothed per-product counts
 └───────┬───────────┘
         │
         ▼
@@ -212,17 +274,17 @@ Image / Video Frame
 │  (shelf_analyzer) │  → ShelfReport
 └───────┬───────────┘
         │
-        ├──────────────────────────┐
-        ▼                          ▼
-┌───────────────────┐    ┌──────────────────────┐
-│ PlanogramChecker  │    │   AlertManager        │
-│ (planogram.py)    │    │   (alerts.py)         │
-│ ComplianceReport  │    │ Telegram / Email / log│
-└───────┬───────────┘    └──────────────────────┘
+        ├──────────────────────────┬──────────────────────┐
+        ▼                          ▼                      ▼
+┌───────────────────┐    ┌──────────────────┐  ┌────────────────────┐
+│ PlanogramChecker  │    │  AlertManager    │  │  RestockPlanner    │
+│ (planogram.py)    │    │  (alerts.py)     │  │  (restock.py)      │
+│ ComplianceReport  │    │ Telegram / Email │  │  Priority task list│
+└───────┬───────────┘    └──────────────────┘  └────────────────────┘
         │
         ▼
 ┌───────────────────┐
-│ Streamlit Dashboard│
+│ Streamlit Dashboard│  KPIs · Restock Queue · CSV export · Trend charts
 │ (dashboard/app.py) │
 └───────────────────┘
 ```
