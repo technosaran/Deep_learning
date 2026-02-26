@@ -5,6 +5,8 @@ from .planogram import ComplianceIssue, ComplianceReport, PlanogramChecker
 from .alerts import AlertManager
 from .metrics import MetricsCalculator, ShelfMetrics
 from .history import HistoryEntry, StockHistory
+from .smoother import DetectionSmoother
+from .restock import RestockPlanner, RestockTask
 
 __all__ = [
     "Detection",
@@ -22,4 +24,7 @@ __all__ = [
     "ShelfMetrics",
     "HistoryEntry",
     "StockHistory",
+    "DetectionSmoother",
+    "RestockPlanner",
+    "RestockTask",
 ]

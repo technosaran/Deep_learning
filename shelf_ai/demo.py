@@ -31,6 +31,7 @@ sys.path.insert(0, str(REPO_ROOT))
 from src.shelf_analyzer import ShelfAnalyzer, StockStatus  # noqa: E402
 from src.planogram import PlanogramChecker  # noqa: E402
 from src.alerts import AlertManager  # noqa: E402
+from src.restock import RestockPlanner  # noqa: E402
 
 CONFIG_DIR = REPO_ROOT / "config"
 PLANOGRAM_PATH = str(CONFIG_DIR / "planogram.yaml")
@@ -54,6 +55,29 @@ def _status_str(status: StockStatus) -> str:
     if status == StockStatus.LOW_STOCK:
         return f"{_YLW}LOW STOCK{_RST}"
     return f"{_GRN}OK{_RST}"
+
+
+def print_restock_plan(tasks):
+    if not tasks:
+        print(f"\n  {_GRN}✅ No restock needed – all shelves are well-stocked.{_RST}")
+        return
+    print(f"\n{_BLD}{'─'*60}{_RST}")
+    print(f"{_BLD}  RESTOCK PRIORITY QUEUE ({len(tasks)} item(s)){_RST}")
+    print(f"{'─'*60}")
+    for task in tasks:
+        if task.urgency_score == 1.0:
+            colour = _RED
+        else:
+            colour = _YLW
+        print(
+            f"  {colour}{_BLD}#{task.rank:>2}{_RST}  "
+            f"urgency={task.urgency_score:.2f}  "
+            f"{task.product:<20}  "
+            f"{task.shelf_name:<28}  "
+            f"need {_BLD}{task.units_needed}{_RST} unit(s)  "
+            f"({task.status.value})"
+        )
+    print(f"{'─'*60}\n")
 
 
 def print_report(report, compliance):
@@ -115,7 +139,7 @@ def _build_demo_result():
     return DetectionResult(detections=dets, image_width=640, image_height=480)
 
 
-def run_on_image(source: str, weights: str, analyzer, checker, alert_mgr):
+def run_on_image(source: str, weights: str, analyzer, checker, alert_mgr, planner):
     from src.detector import ShelfDetector
 
     detector = ShelfDetector(weights)
@@ -125,6 +149,7 @@ def run_on_image(source: str, weights: str, analyzer, checker, alert_mgr):
     report = analyzer.analyse(result)
     compliance = checker.check(report.misplaced)
     print_report(report, compliance)
+    print_restock_plan(planner.plan(report))
 
     try:
         import cv2
@@ -140,7 +165,7 @@ def run_on_image(source: str, weights: str, analyzer, checker, alert_mgr):
     _fire_alerts(report, alert_mgr)
 
 
-def run_webcam(weights: str, analyzer, checker, alert_mgr):
+def run_webcam(weights: str, analyzer, checker, alert_mgr, planner):
     try:
         import cv2
     except ImportError:
@@ -176,6 +201,7 @@ def run_webcam(weights: str, analyzer, checker, alert_mgr):
             report = analyzer.analyse(result)
             compliance = checker.check(report.misplaced)
             print_report(report, compliance)
+            print_restock_plan(planner.plan(report))
             print(f"  📷 Real-time FPS: {fps:.1f}")
             _fire_alerts(report, alert_mgr)
             last_analysis = now
@@ -243,6 +269,7 @@ def main(argv=None):
     analyzer = ShelfAnalyzer(PLANOGRAM_PATH, THRESHOLDS_PATH)
     checker = PlanogramChecker(PLANOGRAM_PATH)
     alert_mgr = AlertManager(THRESHOLDS_PATH)
+    planner = RestockPlanner()
 
     if args.demo:
         print("Running synthetic demo (no model weights needed)…")
@@ -250,11 +277,12 @@ def main(argv=None):
         report = analyzer.analyse(result)
         compliance = checker.check(report.misplaced)
         print_report(report, compliance)
+        print_restock_plan(planner.plan(report))
         _fire_alerts(report, alert_mgr)
     elif args.source:
-        run_on_image(args.source, args.weights, analyzer, checker, alert_mgr)
+        run_on_image(args.source, args.weights, analyzer, checker, alert_mgr, planner)
     else:
-        run_webcam(args.weights, analyzer, checker, alert_mgr)
+        run_webcam(args.weights, analyzer, checker, alert_mgr, planner)
 
 
 if __name__ == "__main__":
