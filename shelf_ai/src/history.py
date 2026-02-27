@@ -121,6 +121,10 @@ class StockHistory:
         """Return the time-ordered list of health scores."""
         return [e.health_score for e in self._entries]
 
+    def compliance_rate_trend(self) -> List[float]:
+        """Return the time-ordered list of compliance rates."""
+        return [e.compliance_rate for e in self._entries]
+
     def clear(self) -> None:
         """Remove all entries and delete the persistence file if present."""
         self._entries.clear()

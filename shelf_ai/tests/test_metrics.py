@@ -162,3 +162,23 @@ class TestMetricsCalculator:
         summary = metrics.summary()
         assert "Fill Rate" in summary
         assert "Health Score" in summary
+
+    def test_as_dict_returns_all_keys(self, analyzer, calc):
+        report = analyzer.analyse(make_result([]))
+        metrics = calc.compute(report)
+        d = metrics.as_dict()
+        expected_keys = {
+            "overall_fill_rate", "compliance_rate", "health_score",
+            "oos_count", "low_stock_count", "ok_count",
+            "misplaced_count", "shelf_fill_rates",
+        }
+        assert expected_keys == set(d.keys())
+
+    def test_as_dict_values_match_attributes(self, analyzer, calc):
+        report = analyzer.analyse(make_result([]))
+        metrics = calc.compute(report)
+        d = metrics.as_dict()
+        assert d["overall_fill_rate"] == metrics.overall_fill_rate
+        assert d["health_score"] == metrics.health_score
+        assert d["oos_count"] == metrics.oos_count
+        assert d["shelf_fill_rates"] == dict(metrics.shelf_fill_rates)

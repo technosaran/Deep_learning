@@ -11,6 +11,7 @@ import sys
 from pathlib import Path
 
 import pytest
+import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
@@ -28,6 +29,24 @@ def make_result(detections):
     return DetectionResult(
         detections=detections, image_width=640, image_height=480
     )
+
+
+def _full_stock_detections() -> list[Detection]:
+    """Build detections that fully stock every product in the planogram."""
+    with open(PLANOGRAM) as f:
+        cfg = yaml.safe_load(f)
+    shelf_y_centers = {
+        sid: (sc["zone_y_range"][0] + sc["zone_y_range"][1]) / 2
+        for sid, sc in cfg["shelves"].items()
+    }
+    dets = []
+    x_positions = [0.05 * (i + 1) for i in range(20)]
+    for shelf_id, shelf_cfg in cfg["shelves"].items():
+        y = shelf_y_centers[shelf_id]
+        for product, count in shelf_cfg["expected_counts"].items():
+            for i in range(count):
+                dets.append(Detection(product, 0.9, x_positions[i % len(x_positions)], y, 0.05, 0.04))
+    return dets
 
 
 @pytest.fixture
@@ -112,6 +131,23 @@ class TestDetectionSmoother:
         smoother.update({"maggi": 4})
         result = smoother.update({"maggi": 5})
         assert isinstance(result["maggi"], int)
+
+    def test_len_zero_on_fresh_smoother(self):
+        smoother = DetectionSmoother(window=3)
+        assert len(smoother) == 0
+
+    def test_len_grows_with_new_products(self):
+        smoother = DetectionSmoother(window=3)
+        smoother.update({"maggi": 2})
+        assert len(smoother) == 1
+        smoother.update({"maggi": 2, "lays": 1})
+        assert len(smoother) == 2
+
+    def test_len_reset_to_zero(self):
+        smoother = DetectionSmoother(window=3)
+        smoother.update({"maggi": 2, "lays": 1})
+        smoother.reset()
+        assert len(smoother) == 0
 
 
 # ===========================================================================
@@ -201,6 +237,20 @@ class TestRestockPlanner:
         task_str = str(tasks[0])
         assert "#" in task_str
         assert tasks[0].product in task_str
+
+    def test_total_units_needed(self, analyzer, planner):
+        report = analyzer.analyse(make_result([]))
+        tasks = planner.plan(report)
+        total = planner.total_units_needed(tasks)
+        assert total == sum(t.units_needed for t in tasks)
+        assert total > 0
+
+    def test_total_units_needed_zero_when_fully_stocked(self, analyzer, planner):
+        # Provide full stock for every product – no tasks should exist
+        full_dets = _full_stock_detections()
+        report = analyzer.analyse(make_result(full_dets))
+        tasks = planner.plan(report)
+        assert planner.total_units_needed(tasks) == 0
 
     def test_task_attributes(self, analyzer, planner):
         report = analyzer.analyse(make_result([]))

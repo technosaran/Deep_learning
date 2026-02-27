@@ -71,6 +71,17 @@ class TestStockHistory:
         assert len(trend) == 1
         assert trend[0] == m.health_score
 
+    def test_compliance_rate_trend(self):
+        h = StockHistory()
+        for rate in [0.6, 0.8, 1.0]:
+            h.record(_make_metrics(compliance_rate=rate))
+        trend = h.compliance_rate_trend()
+        assert trend == [0.6, 0.8, 1.0]
+
+    def test_compliance_rate_trend_empty(self):
+        h = StockHistory()
+        assert h.compliance_rate_trend() == []
+
     def test_clear_removes_entries(self):
         h = StockHistory()
         h.record(_make_metrics())

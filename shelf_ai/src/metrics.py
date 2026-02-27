@@ -58,6 +58,19 @@ class ShelfMetrics:
         """
         return round((self.overall_fill_rate * 60 + self.compliance_rate * 40), 1)
 
+    def as_dict(self) -> dict:
+        """Return a plain-dict representation suitable for JSON export."""
+        return {
+            "overall_fill_rate": self.overall_fill_rate,
+            "compliance_rate": self.compliance_rate,
+            "health_score": self.health_score,
+            "oos_count": self.oos_count,
+            "low_stock_count": self.low_stock_count,
+            "ok_count": self.ok_count,
+            "misplaced_count": self.misplaced_count,
+            "shelf_fill_rates": dict(self.shelf_fill_rates),
+        }
+
     def summary(self) -> str:
         lines = [
             "── Shelf KPI Summary ──────────────────────",
