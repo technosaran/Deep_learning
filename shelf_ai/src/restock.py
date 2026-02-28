@@ -120,3 +120,8 @@ class RestockPlanner:
             task.rank = i
 
         return tasks
+
+    @staticmethod
+    def total_units_needed(tasks: List[RestockTask]) -> int:
+        """Return the sum of units needed across all restock tasks."""
+        return sum(t.units_needed for t in tasks)

@@ -79,6 +79,10 @@ class DetectionSmoother:
         """Clear all buffered frame history."""
         self._buffers.clear()
 
+    def __len__(self) -> int:
+        """Number of products currently being tracked."""
+        return len(self._buffers)
+
     @property
     def window(self) -> int:
         """The configured smoothing window size."""

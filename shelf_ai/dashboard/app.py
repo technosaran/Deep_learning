@@ -249,6 +249,7 @@ def render_shelf_report(report, checker, history: StockHistory | None = None):
                 {
                     "Health Score": [e.health_score for e in entries],
                     "Fill Rate %": [round(e.overall_fill_rate * 100, 1) for e in entries],
+                    "Compliance Rate %": [round(e.compliance_rate * 100, 1) for e in entries],
                     "Out of Stock": [e.oos_count for e in entries],
                     "Low Stock": [e.low_stock_count for e in entries],
                 }
@@ -258,6 +259,17 @@ def render_shelf_report(report, checker, history: StockHistory | None = None):
                 st.line_chart(df[["Health Score", "Fill Rate %"]])
             with col_b:
                 st.line_chart(df[["Out of Stock", "Low Stock"]])
+
+            # ── History CSV export ────────────────────────────────────────
+            ts_col = [e.iso_timestamp for e in entries]
+            export_df = df.copy()
+            export_df.insert(0, "Timestamp", ts_col)
+            st.download_button(
+                label="⬇️ Export trend history as CSV",
+                data=export_df.to_csv(index=False),
+                file_name="shelf_ai_history.csv",
+                mime="text/csv",
+            )
 
 
 # ---------------------------------------------------------------------------
