@@ -7,13 +7,15 @@ Maps detections to shelf zones, counts stock, and determines stock status
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Dict, List, Tuple
 
-import yaml
-
+from .config import load_and_validate_configs
 from .detector import Detection, DetectionResult
+
+logger = logging.getLogger(__name__)
 
 
 class StockStatus(str, Enum):
@@ -109,10 +111,7 @@ class ShelfAnalyzer:
     """
 
     def __init__(self, planogram_path: str, thresholds_path: str) -> None:
-        with open(planogram_path) as f:
-            self._planogram = yaml.safe_load(f)
-        with open(thresholds_path) as f:
-            cfg = yaml.safe_load(f)
+        self._planogram, cfg = load_and_validate_configs(planogram_path, thresholds_path)
 
         self._low_stock_ratio: float = cfg["stock"]["low_stock_ratio"]
         self._out_of_stock_count: int = cfg["stock"]["out_of_stock_count"]
@@ -161,6 +160,11 @@ class ShelfAnalyzer:
         for det in result.detections:
             detected_shelf = self._detect_shelf_for(det)
             if detected_shelf is None:
+                logger.debug(
+                    "Detection '%s' at y=%.3f does not match any shelf zone – skipped.",
+                    det.label,
+                    det.y_center,
+                )
                 continue
 
             product = det.label
@@ -168,6 +172,12 @@ class ShelfAnalyzer:
 
             # Misplacement check
             if expected_shelf and expected_shelf != detected_shelf:
+                logger.debug(
+                    "Misplacement: '%s' found on '%s', expected '%s'.",
+                    product,
+                    detected_shelf,
+                    expected_shelf,
+                )
                 misplaced.append((product, detected_shelf, expected_shelf))
 
             # Still count the product on the shelf it was found
@@ -182,6 +192,15 @@ class ShelfAnalyzer:
             for product, expected in shelf_cfg["expected_counts"].items():
                 detected = counts[shelf_id].get(product, 0)
                 status = self._stock_status(detected, expected)
+                if status != StockStatus.OK:
+                    logger.debug(
+                        "Shelf '%s' – '%s': %d/%d → %s",
+                        shelf_id,
+                        product,
+                        detected,
+                        expected,
+                        status.value,
+                    )
                 stocks.append(
                     ProductStock(
                         product=product,

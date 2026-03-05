@@ -10,10 +10,13 @@ shelf is analysed, enabling trend visualisation in the dashboard and reports.
 from __future__ import annotations
 
 import json
+import logging
 import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -101,6 +104,12 @@ class StockHistory:
             self._entries = self._entries[-self._max_entries :]
         if self._path:
             self._save()
+        logger.debug(
+            "History entry recorded: health=%.1f, fill=%.1f%%, entries=%d",
+            entry.health_score,
+            entry.overall_fill_rate * 100,
+            len(self._entries),
+        )
         return entry
 
     @property
@@ -124,6 +133,64 @@ class StockHistory:
     def compliance_rate_trend(self) -> List[float]:
         """Return the time-ordered list of compliance rates."""
         return [e.compliance_rate for e in self._entries]
+
+    def anomaly_detected(
+        self,
+        threshold: float = 10.0,
+        baseline_window: int = 5,
+    ) -> tuple[bool, str]:
+        """
+        Detect a sudden drop in health score.
+
+        Compares the latest health score against the rolling average of the
+        previous *baseline_window* entries.  Returns ``(True, reason)`` when
+        the drop equals or exceeds *threshold* points.
+
+        Parameters
+        ----------
+        threshold : float
+            Minimum point drop (absolute) to classify as an anomaly.
+            Default is 10.0.
+        baseline_window : int
+            Number of historical entries (before the latest) used to compute
+            the baseline average.  Default is 5.
+
+        Returns
+        -------
+        tuple[bool, str]
+            ``(detected, reason)`` – *reason* is an empty string when no
+            anomaly is found.
+
+        Examples
+        --------
+        >>> history = StockHistory()
+        >>> history.record(metrics_good)   # health ≈ 80
+        >>> history.record(metrics_bad)    # health ≈ 55
+        >>> detected, reason = history.anomaly_detected(threshold=10)
+        >>> detected
+        True
+        """
+        if len(self._entries) < 2:
+            return False, ""
+
+        # Baseline: up to *baseline_window* entries before the latest
+        historical = self._entries[-(baseline_window + 1):-1]
+        if not historical:
+            return False, ""
+
+        baseline = sum(e.health_score for e in historical) / len(historical)
+        latest = self._entries[-1].health_score
+        drop = baseline - latest
+
+        if drop >= threshold:
+            reason = (
+                f"Health score dropped {drop:.1f} points "
+                f"(baseline={baseline:.1f}, current={latest:.1f})"
+            )
+            logger.warning("Anomaly detected: %s", reason)
+            return True, reason
+
+        return False, ""
 
     def clear(self) -> None:
         """Remove all entries and delete the persistence file if present."""

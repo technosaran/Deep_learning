@@ -12,10 +12,13 @@ Derives high-level retail KPIs from a :class:`~shelf_analyzer.ShelfReport`:
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from typing import Dict, List
 
 from .shelf_analyzer import ShelfReport, StockStatus
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -131,7 +134,7 @@ class MetricsCalculator:
                 min(total_det / total_exp, 1.0) if total_exp else 1.0
             )
 
-        return ShelfMetrics(
+        metrics = ShelfMetrics(
             overall_fill_rate=report.overall_fill_rate,
             compliance_rate=compliance_rate,
             oos_count=oos_count,
@@ -140,3 +143,11 @@ class MetricsCalculator:
             misplaced_count=misplaced_count,
             shelf_fill_rates=shelf_fill_rates,
         )
+        logger.debug(
+            "Metrics computed: health=%.1f, fill=%.1f%%, oos=%d, low=%d",
+            metrics.health_score,
+            metrics.overall_fill_rate * 100,
+            oos_count,
+            low_stock_count,
+        )
+        return metrics

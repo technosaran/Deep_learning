@@ -62,6 +62,8 @@ class AlertManager:
 
         # Cooldown tracker: alert_key -> last_sent_timestamp
         self._last_sent: Dict[str, float] = {}
+        # Timestamp of the last automatic prune operation
+        self._last_prune: float = 0.0
 
     # ------------------------------------------------------------------
     # Public API
@@ -86,6 +88,10 @@ class AlertManager:
         """
         if alert_key:
             now = time.time()
+            # Periodically prune stale cooldown entries (once per hour)
+            if now - self._last_prune > 3600:
+                self.prune_cooldown()
+                self._last_prune = now
             last = self._last_sent.get(alert_key, 0.0)
             if now - last < self._cooldown:
                 logger.debug("Alert '%s' suppressed (cooldown).", alert_key)
@@ -108,6 +114,37 @@ class AlertManager:
             message=report_text,
             alert_key="daily_report",
         )
+
+    def prune_cooldown(self, max_age_seconds: float | None = None) -> int:
+        """
+        Remove stale cooldown entries to prevent unbounded memory growth.
+
+        In long-running processes (e.g. a 24/7 webcam loop), the
+        ``_last_sent`` dict accumulates one entry per unique *alert_key*
+        ever seen.  This method removes keys whose last-sent timestamp is
+        older than *max_age_seconds*, freeing memory and keeping the dict
+        compact.
+
+        Parameters
+        ----------
+        max_age_seconds : float | None
+            Entries older than this many seconds are removed.  Defaults to
+            ``2 × cooldown_seconds``.
+
+        Returns
+        -------
+        int
+            Number of stale keys removed.
+        """
+        if max_age_seconds is None:
+            max_age_seconds = float(self._cooldown) * 2
+        cutoff = time.time() - max_age_seconds
+        stale = [k for k, t in self._last_sent.items() if t < cutoff]
+        for k in stale:
+            del self._last_sent[k]
+        if stale:
+            logger.debug("Pruned %d stale cooldown entries.", len(stale))
+        return len(stale)
 
     # ------------------------------------------------------------------
     # Internal helpers
