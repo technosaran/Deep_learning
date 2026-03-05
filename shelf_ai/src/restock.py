@@ -18,10 +18,13 @@ Priority rules
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import List
 
 from .shelf_analyzer import ShelfReport, StockStatus
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -119,6 +122,11 @@ class RestockPlanner:
         for i, task in enumerate(tasks, start=1):
             task.rank = i
 
+        logger.debug(
+            "Restock plan: %d task(s), %d total unit(s) needed.",
+            len(tasks),
+            self.total_units_needed(tasks),
+        )
         return tasks
 
     @staticmethod

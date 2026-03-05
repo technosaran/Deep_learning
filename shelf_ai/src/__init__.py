@@ -1,4 +1,5 @@
 # shelf_ai/src/__init__.py
+from .config import ConfigValidationError, load_and_validate_configs, load_yaml
 from .detector import Detection, DetectionResult, ShelfDetector
 from .shelf_analyzer import ProductStock, ShelfAnalyzer, ShelfReport, StockStatus
 from .planogram import ComplianceIssue, ComplianceReport, PlanogramChecker
@@ -9,6 +10,9 @@ from .smoother import DetectionSmoother
 from .restock import RestockPlanner, RestockTask
 
 __all__ = [
+    "ConfigValidationError",
+    "load_and_validate_configs",
+    "load_yaml",
     "Detection",
     "DetectionResult",
     "ShelfDetector",

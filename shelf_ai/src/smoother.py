@@ -12,8 +12,11 @@ without introducing significant lag.
 
 from __future__ import annotations
 
+import logging
 from collections import defaultdict, deque
 from typing import Dict
+
+logger = logging.getLogger(__name__)
 
 
 class DetectionSmoother:

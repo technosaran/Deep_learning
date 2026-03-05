@@ -9,10 +9,13 @@ produced by :class:`~shelf_analyzer.ShelfAnalyzer`.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from typing import Dict, List, Tuple
 
-import yaml
+from .config import load_yaml
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -63,8 +66,7 @@ class PlanogramChecker:
     """
 
     def __init__(self, planogram_path: str) -> None:
-        with open(planogram_path) as f:
-            cfg = yaml.safe_load(f)
+        cfg = load_yaml(planogram_path)
         self._shelf_names: Dict[str, str] = {
             sid: sc["name"] for sid, sc in cfg["shelves"].items()
         }
